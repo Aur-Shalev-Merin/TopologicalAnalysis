@@ -123,7 +123,7 @@ scatter!(p,MDS_coords[1,6:10],MDS_coords[2,6:10],label="Perturbed grid")
 # For example
 using Distributed # for addprocs
 
-addprocs(3) # add, say, 3 processes
+addprocs(12) # add, say, 3 processes
 println(nworkers()) # check they have been added
 
 @everywhere using TopologicalAnalysis # make sure all processes are aware of TopologicalAnalysis 
