@@ -130,7 +130,7 @@ end
 # Path to your CSV file
 csv_path = "examples/centers_of_mass.csv"  # Provide the correct path
 
-csv_path_h5 = "examples/centers_of_mass.csv"
+#csv_path_h5 = "examples/centers_of_mass.csv"
 
 #random_points = get_random_points_convex(csv_path)
 
