@@ -28,15 +28,17 @@ function generate_pts(file_path::String)
     return compute_motifs(delaunay_info)
 end
 
+
+@everywhere function load_single_h5(file::String)
+    println("Loading file: ", file)
+    net = load(file)
+    return compute_motifs(net)
+end
+
 function load_networks_from_h5(h5_files::Vector{String})
     println("Loading networks from ", length(h5_files), " .h5 files...")
-    motif_arrays = Vector{MotifArray}()
-    for file in h5_files
-        println("Loading file: ", file)
-        topological_network = load(file)
-        motif_array = compute_motifs(topological_network)
-        push!(motif_arrays, motif_array)
-    end
+    # Parallel map for improved performance
+    motif_arrays = pmap(load_single_h5, h5_files)
     println("All .h5 files loaded. Total networks: ", length(motif_arrays))
     return motif_arrays
 end
@@ -93,7 +95,7 @@ println("Generating Bee Points motif...")
 real_pts = generate_pts(csv_path)
 
 # 6) Combine real points + network arrays
-println("Combining real points with existing motif arrays...")
+println("Combining Bee swarm points with existing motif arrays...")
 total_motif_array = vcat(real_pts, existing_motif_arrays...)
 
 # 7) Compute the flip graph and distance matrix
@@ -103,7 +105,7 @@ println("Computing distance matrix...")
 d = calculate_distance_matrix(flip_graph_combined, total_motif_array, optimal_transport=false)
 
 # 8) Build labels: first "Real Points," then each directory label
-all_labels = vcat(["Real Points"], network_labels)
+all_labels = vcat(["Bee Swarm"], network_labels)
 println("Total labels: ", length(all_labels))
 
 # 9) Save results to CSV
@@ -129,7 +131,7 @@ p = scatter(
     ylabel="MDS PC 2",
     grid=false,
     aspect_ratio=:equal,
-    title="MDS PCq vs PCw"
+    title="MDS PC1 vs PC2"
 )
 for i in 2:length(all_labels)
     scatter!(
