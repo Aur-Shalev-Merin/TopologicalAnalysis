@@ -8,8 +8,15 @@ using Plots
 using Distributed
 using Glob
 using FilePathsBase: basename, dirname
+using MultivariateStats  # For MDS
+using Dates  # For timing
 
 println("Starting Main.jl script...")
+
+# Stop all current workers (if they exist)
+if !isempty(workers())
+    rmprocs(workers())
+end
 
 addprocs(12)
 println("Number of workers: ", nworkers())
@@ -28,18 +35,19 @@ function generate_pts(file_path::String)
     return compute_motifs(delaunay_info)
 end
 
-
-@everywhere function load_single_h5(file::String)
-    println("Loading file: ", file)
+@everywhere function load_network(file::String)
+    println("Loading file on worker ", myid(), ": ", file)
     net = load(file)
-    return compute_motifs(net)
+    motifs = compute_motifs(net)
+    println("Finished loading and computing motifs for file on worker ", myid(), ": ", file)
+    return motifs
 end
 
 function load_networks_from_h5(h5_files::Vector{String})
-    println("Loading networks from ", length(h5_files), " .h5 files...")
-    # Parallel map for improved performance
-    motif_arrays = pmap(load_single_h5, h5_files)
-    println("All .h5 files loaded. Total networks: ", length(motif_arrays))
+    println("Starting parallel loading of .h5 files on ", nworkers(), " workers...")
+    start_time = now()
+    motif_arrays = pmap(load_network, h5_files)
+    println("Finished parallel loading of .h5 files in ", now() - start_time)
     return motif_arrays
 end
 
@@ -50,7 +58,7 @@ csv_path = joinpath(@__DIR__, "../BeeData/centers_of_mass.csv")
 println("Real points CSV path: ", csv_path)
 
 # 2) Recursively collect all .h5 files
-network_dir = "C:/Users/aur_m/OneDrive - UCB-O365/School/Bee Swarm Research/Code/TopologicalAnalysis/network"
+network_dir = joinpath(@__DIR__, "../network")
 println("Collecting .h5 files from subdirectories, but only the first directory per each of the first 5 directories...")
 
 all_h5_files = collect(glob("**/*.h5", network_dir))
@@ -88,21 +96,32 @@ network_labels = [dir_label(path) for path in h5_files]
 println("Selected labels: ", network_labels)
 
 # 4) Load MotifArrays
+start_time = now()
 existing_motif_arrays = load_networks_from_h5(h5_files)
+println("Loaded MotifArrays in ", now() - start_time)
 
 # 5) Create a single Real Points motif
 println("Generating Bee Points motif...")
+start_time = now()
 real_pts = generate_pts(csv_path)
+println("Generated Bee Points motif in ", now() - start_time)
 
 # 6) Combine real points + network arrays
 println("Combining Bee swarm points with existing motif arrays...")
+start_time = now()
 total_motif_array = vcat(real_pts, existing_motif_arrays...)
+println("Combined motifs in ", now() - start_time)
 
 # 7) Compute the flip graph and distance matrix
 println("Computing flip graph...")
-flip_graph_combined = compute_flip(total_motif_array...; restrict=0, thresh=0.5)
+start_time = now()
+@time flip_graph_combined = compute_flip(total_motif_array...; restrict=0, thresh=0.5)
+println("Flip graph computation complete in ", now() - start_time)
+
 println("Computing distance matrix...")
+start_time = now()
 d = calculate_distance_matrix(flip_graph_combined, total_motif_array, optimal_transport=false)
+println("Computed distance matrix in ", now() - start_time)
 
 # 8) Build labels: first "Real Points," then each directory label
 all_labels = vcat(["Bee Swarm"], network_labels)
@@ -110,18 +129,20 @@ println("Total labels: ", length(all_labels))
 
 # 9) Save results to CSV
 println("Saving results to CSV: result.csv")
+start_time = now()
 df = DataFrame(d, :auto)
 rename!(df, Symbol.(all_labels); makeunique=true)
 CSV.write(save_directory * "result.csv", df)
+println("Saved results to CSV in ", now() - start_time)
 
 println("Moving on to MDS visualization...")
 
 using MultivariateStats
 
 # 10) MDS for visualization
+start_time = now()
 MDS_coords = MultivariateStats.transform(MultivariateStats.fit(MDS, d, maxoutdim=3, distances=true))
-println("MDS computation complete.")
-
+println("MDS computation complete in ", now() - start_time)
 
 # 11) Plot in 2D using MDS PC2 vs PC3
 p = scatter(
@@ -172,6 +193,5 @@ combined_plot = plot(
     plot_titlefontsize = 14
 )
 display(combined_plot)
-
 
 println("Main.jl script complete.")
